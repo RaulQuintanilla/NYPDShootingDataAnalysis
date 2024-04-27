@@ -1,0 +1,114 @@
+---
+title: "Shooting Project Step 1"
+author: "R.Q."
+date: "2024-04-17"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+```
+## Introduction
+This dataset contains information on shooting related deaths in New York dating back to 2006.
+The first question I would like to answer is what is the highest number of shootings in any given year and what precinct those shootings are related to.
+
+
+
+## Import NYPD Shooting Dataset
+
+```{r}
+shooting_data <- read.csv("C:\\Users\\lalus\\Downloads\\NYPD_Shooting_Incident_Data__Historic_.csv", 
+                          stringsAsFactors = TRUE)
+```
+
+## Select Useful Data Columns
+
+```{r shooting_data}
+col_keep = c("OCCUR_DATE","BORO","PRECINCT","PERP_AGE_GROUP","PERP_SEX",
+             "PERP_RACE","VIC_AGE_GROUP","VIC_SEX","VIC_RACE")
+df1 = subset(shooting_data, select = col_keep)
+
+```
+
+## ORDER DATA BY DATE
+
+```{r}
+df1 <- df1[order(df1$OCCUR_DATE),]
+
+```
+
+## SUMMARY
+
+```{r}
+summary(df1)
+```
+
+Depending on what analysis is being done, some section of data are unusable. Perpetrators are not always known, so missing data is to be expected related to them. We should always have victim data. It will be better to remove missing perpetrator records and related victim data depending on analysis needed.
+
+
+
+## Figure 1: Total Shootings by Year
+
+```{r}
+table1 = data.frame(table(df1$OCCUR_DATE))
+colnames(table1) = c("Day", "Deaths")
+table1$Day = as.Date(table1$Day, format = "%m/%d/%Y")
+table1$day = day(table1$Day)
+table1$month = month(table1$Day)
+table1$year = year(table1$Day)
+
+death_counts = aggregate(Deaths ~ year, data = table1, FUN = length)
+
+ggplot(death_counts, aes(year,Deaths, fill = Deaths)) + 
+  geom_bar(stat = "identity") + coord_cartesian(ylim = c(300,375)) + 
+  scale_fill_gradient(low = "blue", high = "red")
+```
+
+## Figure 2: History For Highest Outlier
+
+```{r}
+#split date into more useable format
+pre = data.frame(df1$OCCUR_DATE, df1$PRECINCT)
+colnames(pre) = c("DATE", "Precinct")
+pre$DATE = as.Date(pre$DATE, format = "%m/%d/%Y")
+pre$day = day(pre$DATE)
+pre$month = month(pre$DATE)
+pre$year = year(pre$DATE)
+
+#order by year for readability
+pre = pre[order(pre$year),]
+pre_yearly = data.frame(table(pre$year, pre$Precinct))
+colnames(pre_yearly) = c("Year", "Precinct", "Deaths")
+
+
+# maximum deaths, year it occured, and precinct
+max(pre_yearly$Deaths) # 144
+pre_yearly$Year[pre_yearly$Deaths == max(pre_yearly$Deaths)] # 2020
+pre_yearly$Precinct[pre_yearly$Deaths == max(pre_yearly$Deaths)] # Precinct 75
+
+p75_deaths = pre_yearly$Deaths[pre_yearly$Precinct == 75]
+p75_year = pre_yearly$Year[pre_yearly$Precinct == 75]
+p75 = data.frame(p75_year, p75_deaths)
+plot(p75, type = "b")
+```
+
+## Linear Model for Precinct 75
+
+```{r}
+mod = lm(p75_deaths ~ as.integer(p75_year), data = p75)
+slice_min(p75, p75$p75_deaths)
+slice_max(p75, p75$p75_deaths)
+grid = seq(1,150)
+mod_df = tibble(p75_deaths = grid)
+deaths_with_pred = mutate(p75, pred = predict(mod))
+ggplot(deaths_with_pred) + 
+  geom_point(aes(x = as.integer(p75_year), y = p75_deaths), color = "red") + 
+  geom_point(aes(x = as.integer(p75_year), y = pred), color = "blue")
+```
+
+By applying a linear model to the data for Precinct 75, we can see a decreasing trend in deaths over the course of the range of dates. In terms of bias, it is possible for there to un unreported or undiscovered deaths at the time at data is collected.
